@@ -3,12 +3,13 @@ const nextConfig = {
   reactStrictMode: false,
   webpack: (config, { isServer }) => {
     if (!isServer) {
-      // 阻止 Webpack 把 Monaco 的 worker 文件作为普通的 JS 模块压缩打包
-      config.module.rules.push({
-        test: /editorWebWorkerMain\.js$/,
-        use: 'ignore-loader',
-      });
+      // 1. 让 Webpack 解析 monaco-editor 时直接指向纯 API 单文件，切断对 worker 文件的静态抓取
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        "monaco-editor$": "monaco-editor/esm/vs/editor/editor.api.js",
+      };
 
+      // 2. 避免 node 模块在浏览器端报错
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
