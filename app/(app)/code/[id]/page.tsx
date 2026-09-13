@@ -6,6 +6,7 @@ import { notFound, redirect } from "next/navigation"
 import Loading from "@/components/editor/loading"
 import dynamic from "next/dynamic"
 import fs from "fs"
+import path from "path"
 
 export const revalidate = 0
 
@@ -64,11 +65,15 @@ const CodeEditor = dynamic(() => import("@/components/editor"), {
 })
 
 function getReactDefinitionFile() {
-  const reactDefinitionFile = fs.readFileSync(
-    "node_modules/@types/react/index.d.ts",
-    "utf8"
-  )
-  return reactDefinitionFile
+  try {
+    const filePath = path.join(process.cwd(), "node_modules/@types/react/index.d.ts")
+    if (fs.existsSync(filePath)) {
+      return fs.readFileSync(filePath, "utf8")
+    }
+  } catch (err) {
+    console.warn("Failed to read react definition file:", err)
+  }
+  return ""
 }
 
 export default async function CodePage({ params }: { params: { id: string } }) {
