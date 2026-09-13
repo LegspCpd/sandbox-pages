@@ -43,7 +43,7 @@ export default function CodeEditor({
 }) {
   const socketRef = useRef<Socket | null>(null);
 
-// Initialize socket connection if it doesn't exist
+  // Initialize socket connection if it doesn't exist
   if (!socketRef.current) {
     const baseUrl =
       process.env.NEXT_PUBLIC_SERVER_URL ||
@@ -112,26 +112,26 @@ export default function CodeEditor({
 
   // Refs for libraries / features
   const editorContainerRef = useRef<HTMLDivElement>(null)
-  const monacoRef = useRef<typeof monaco | null>(null)
+  const monacoRef = useRef<any>(null)
   const generateRef = useRef<HTMLDivElement>(null)
   const generateWidgetRef = useRef<HTMLDivElement>(null)
   const previewPanelRef = useRef<ImperativePanelHandle>(null)
   const editorPanelRef = useRef<ImperativePanelHandle>(null)
 
   // Pre-mount editor keybindings
-  const handleEditorWillMount: BeforeMount = (monaco) => {
-    monaco.editor.addKeybindingRules([
+  const handleEditorWillMount: BeforeMount = (monacoInstance) => {
+    monacoInstance.editor.addKeybindingRules([
       {
-        keybinding: monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyG,
+        keybinding: monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyG,
         command: "null",
       },
     ])
   }
 
   // Post-mount editor keybindings and actions
-  const handleEditorMount: OnMount = (editor, monaco) => {
+  const handleEditorMount: OnMount = (editor, monacoInstance) => {
     setEditorRef(editor)
-    monacoRef.current = monaco
+    monacoRef.current = monacoInstance
 
     editor.onDidChangeCursorPosition((e) => {
       const { column, lineNumber } = e.position
@@ -141,27 +141,29 @@ export default function CodeEditor({
       const model = editor.getModel()
       const endColumn = model?.getLineContent(lineNumber).length || 0
 
-      setDecorations((prev) => {
-        return {
-          ...prev,
-          options: [
-            {
-              range: new monaco.Range(
-                lineNumber,
-                column,
-                lineNumber,
-                endColumn
-              ),
-              options: {
-                afterContentClassName: "inline-decoration",
+      if (monacoRef.current) {
+        setDecorations((prev) => {
+          return {
+            ...prev,
+            options: [
+              {
+                range: new monacoRef.current.Range(
+                  lineNumber,
+                  column,
+                  lineNumber,
+                  endColumn
+                ),
+                options: {
+                  afterContentClassName: "inline-decoration",
+                },
               },
-            },
-          ],
-        }
-      })
+            ],
+          }
+        })
+      }
     })
 
-    editor.onDidBlurEditorText((e) => {
+    editor.onDidBlurEditorText(() => {
       setDecorations((prev) => {
         return {
           ...prev,
@@ -170,22 +172,24 @@ export default function CodeEditor({
       })
     })
 
-    editor.addAction({
-      id: "generate",
-      label: "Generate",
-      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyG],
-      precondition:
-        "editorTextFocus && !suggestWidgetVisible && !renameInputVisible && !inSnippetMode && !quickFixWidgetVisible",
-      run: () => {
-        setGenerate((prev) => {
-          return {
-            ...prev,
-            show: !prev.show,
-            pref: [monaco.editor.ContentWidgetPositionPreference.BELOW],
-          }
-        })
-      },
-    })
+    if (monacoInstance) {
+      editor.addAction({
+        id: "generate",
+        label: "Generate",
+        keybindings: [monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyG],
+        precondition:
+          "editorTextFocus && !suggestWidgetVisible && !renameInputVisible && !inSnippetMode && !quickFixWidgetVisible",
+        run: () => {
+          setGenerate((prev) => {
+            return {
+              ...prev,
+              show: !prev.show,
+              pref: [monacoInstance.editor.ContentWidgetPositionPreference.BELOW],
+            }
+          })
+        },
+      })
+    }
   }
 
   // Generate widget effect
@@ -233,10 +237,9 @@ export default function CodeEditor({
         },
       }
 
-      // window width - sidebar width, times the percentage of the editor panel
       const width = editorPanelRef.current
         ? (editorPanelRef.current.getSize() / 100) * (window.innerWidth - 224)
-        : 400 //fallback
+        : 400
 
       setGenerate((prev) => {
         return {
@@ -268,7 +271,7 @@ export default function CodeEditor({
         }
       })
     }
-  }, [generate.show])
+  }, [generate.show, ai, cursorLine, editorRef, generate.pref])
 
   // Decorations effect for generate widget tips
   useEffect(() => {
@@ -299,7 +302,7 @@ export default function CodeEditor({
         }
       })
     }
-  }, [decorations.options])
+  }, [decorations.options, ai, cursorLine, editorRef, decorations.instance])
 
   // Save file keybinding logic effect
   const debouncedSaveData = useCallback(
@@ -309,10 +312,8 @@ export default function CodeEditor({
           tab.id === activeFileId ? { ...tab, saved: true } : tab
         )
       );
-      console.log(`Saving file...${activeFileId}`);
-      console.log(`Saving file...${value}`);
       socketRef.current?.emit("saveFile", activeFileId, value);
-    }, Number(process.env.FILE_SAVE_DEBOUNCE_DELAY)||1000),
+    }, Number(process.env.FILE_SAVE_DEBOUNCE_DELAY) || 1000),
     [socketRef]
   );
 
@@ -328,7 +329,7 @@ export default function CodeEditor({
     return () => {
       document.removeEventListener("keydown", down);
     };
-  }, [activeFileId, tabs, debouncedSaveData]);
+  }, [activeFileId, tabs, debouncedSaveData, editorRef]);
 
   // Liveblocks live collaboration setup effect
   useEffect(() => {
@@ -357,7 +358,6 @@ export default function CodeEditor({
     }
 
     yProvider.on("sync", onSync)
-
     setProvider(yProvider)
 
     const binding = new MonacoBinding(
@@ -373,12 +373,12 @@ export default function CodeEditor({
       binding.destroy()
       yProvider.off("sync", onSync)
     }
-  }, [editorRef, room, activeFileContent])
+  }, [editorRef, room, activeFileContent, tabs, activeFileId])
 
   // Connection/disconnection effect
   useEffect(() => {
     socketRef.current?.connect()
-    
+
     return () => {
       socketRef.current?.disconnect()
     }
@@ -432,21 +432,14 @@ export default function CodeEditor({
       socketRef.current?.off("disableAccess", onDisableAccess)
       socketRef.current?.off("previewURL", setPreviewURL)
     }
-    // }, []);
-  }, [terminals])
+  }, [terminals, isOwner])
 
-  // Helper functions for tabs:
-
-  // Select file and load content
-
-  // Initialize debounced function once
   const fileCache = useRef(new Map());
 
-  // Debounced function to get file content
   const debouncedGetFile = useCallback(
-    debounce((tabId, callback) => {
+    debounce((tabId: string, callback: (res: any) => void) => {
       socketRef.current?.emit('getFile', tabId, callback);
-    }, 300), // 300ms debounce delay, adjust as needed
+    }, 300),
     []
   );
 
@@ -477,12 +470,9 @@ export default function CodeEditor({
     setActiveFileId(tab.id);
   }, [activeFileId, tabs, debouncedGetFile]);
 
-  // Close tab and remove from tabs
   const closeTab = (id: string) => {
     const numTabs = tabs.length
     const index = tabs.findIndex((t) => t.id === id)
-
-    console.log("closing tab", id, index)
 
     if (index === -1) return
 
@@ -513,11 +503,8 @@ export default function CodeEditor({
     if (numTabs === 0) return
 
     const allIndexes = ids.map((id) => tabs.findIndex((t) => t.id === id))
-
     const indexes = allIndexes.filter((index) => index !== -1)
     if (indexes.length === 0) return
-
-    console.log("closing tabs", ids, indexes)
 
     const activeIndex = tabs.findIndex((t) => t.id === activeFileId)
 
@@ -566,7 +553,6 @@ export default function CodeEditor({
 
   const handleDeleteFolder = (folder: TFolder) => {
     setDeletingFolderId(folder.id)
-    console.log("deleting folder", folder.id)
 
     socketRef.current?.emit("getFolder", folder.id, (response: string[]) =>
       closeTabs(response)
@@ -578,7 +564,6 @@ export default function CodeEditor({
     })
   }
 
-  // On disabled access for shared users, show un-interactable loading placeholder + info modal
   if (disableAccess.isDisabled)
     return (
       <>
@@ -593,7 +578,6 @@ export default function CodeEditor({
 
   return (
     <>
-      {/* Copilot DOM elements */}
       <div ref={generateRef} />
       <div className="z-50 p-1" ref={generateWidgetRef}>
         {generate.show && ai ? (
@@ -651,7 +635,6 @@ export default function CodeEditor({
         ) : null}
       </div>
 
-      {/* Main editor components */}
       <Sidebar
         sandboxData={sandboxData}
         files={files}
@@ -663,12 +646,10 @@ export default function CodeEditor({
         setFiles={setFiles}
         addNew={(name, type) => addNew(name, type, setFiles, sandboxData)}
         deletingFolderId={deletingFolderId}
-        // AI Copilot Toggle
         ai={ai}
         setAi={setAi}
       />
 
-      {/* Shadcn resizeable panels: https://ui.shadcn.com/docs/components/resizable */}
       <ResizablePanelGroup direction="horizontal">
         <ResizablePanel
           className="p-2 flex flex-col"
@@ -678,13 +659,12 @@ export default function CodeEditor({
           ref={editorPanelRef}
         >
           <div className="h-10 w-full flex gap-2 overflow-auto tab-scroll">
-            {/* File tabs */}
             {tabs.map((tab) => (
               <Tab
                 key={tab.id}
                 saved={tab.saved}
                 selected={activeFileId === tab.id}
-                onClick={(e) => {
+                onClick={() => {
                   selectFile(tab)
                 }}
                 onClose={() => closeTab(tab.id)}
@@ -693,20 +673,16 @@ export default function CodeEditor({
               </Tab>
             ))}
           </div>
-          {/* Monaco editor */}
           <div
             ref={editorContainerRef}
             className="grow w-full overflow-hidden rounded-md relative"
           >
             {!activeFileId ? (
-              <>
-                <div className="w-full h-full flex items-center justify-center text-xl font-medium text-muted-foreground/50 select-none">
-                  <FileJson className="w-6 h-6 mr-3" />
-                  No file selected.
-                </div>
-              </>
-            ) : // Note clerk.loaded is required here due to a bug: https://github.com/clerk/javascript/issues/1643
-            clerk.loaded ? (
+              <div className="w-full h-full flex items-center justify-center text-xl font-medium text-muted-foreground/50 select-none">
+                <FileJson className="w-6 h-6 mr-3" />
+                No file selected.
+              </div>
+            ) : clerk.loaded ? (
               <>
                 {provider && userInfo ? (
                   <Cursors yProvider={provider} userInfo={userInfo} />
@@ -807,4 +783,3 @@ export default function CodeEditor({
     </>
   )
 }
-
