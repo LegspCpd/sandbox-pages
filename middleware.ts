@@ -1,10 +1,9 @@
-import { authMiddleware } from "@clerk/nextjs"
+import { authMiddleware } from "@clerk/nextjs";
 
 export default authMiddleware({
-  publicRoutes: (req) =>
-    !req.url.includes("/dashboard") && !req.url.includes("/code"),
-})
+  publicRoutes: ["/", "/api/lb-auth"],
+});
 
 export const config = {
   matcher: ["/((?!.+\\.[\\w]+$|_next).*)", "/", "/(api|trpc)(.*)"],
-}
+};
