@@ -1,7 +1,7 @@
 "use client"
 
 import { SetStateAction, useCallback, useEffect, useRef, useState } from "react"
-import monaco from "monaco-editor"
+import type * as monaco from "monaco-editor"
 import Editor, { BeforeMount, OnMount } from "@monaco-editor/react"
 import { Socket, io } from "socket.io-client"
 import { toast } from "sonner"
